@@ -1,0 +1,116 @@
+---
+title: "Report of matrix completion"
+author: "Shen.Shirun"
+date: "11/2/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This is the second programming homework of statistical computing. The task is to recover the graphs with missing elements. However, we can consider this problem as an optimization problem. There are lots of algorithm can be used for this problem, such as soft impute algorithm, singular value thresholding algorithm, etc. Here I use the soft impute algorithm.
+
+## Algorithm description
+
+Matrix Completion: we only observe one part of the matrix $X \in R^{m\times n}$, which we denote as $\Omega$. More specifically,
+$$X_{ij}~~\text{is observed if and only if}~~(i,j)\in \Omega$$
+Given any matrix $Y=(y_{ij})\in R^{m\times n}$, define a map
+$$P_{\Omega}(Y) = \tilde{Y} = (\tilde{y}_{ij}) \in R^{m\times n}$$
+and
+$$
+\tilde{y}_{ij} = 
+ \begin{cases}
+   y_{ij} &~~& (i,j)\in\Omega\\
+   0  &~~& otherwise
+   \end{cases}
+$$
+we change the matrix completion problem into the optimization problem as follows
+$$
+min_{Y \in R^{m\times n}}||P_{\Omega}(Y-X)||_F^2 + \lambda ||Y||_{S_1}
+$$
+where $||\cdot||_{S_1}$ is the nuclear norm, and $||\cdot||_F$ is the Frobenius norm.
+
+$P_{\Omega}(Y - X) = P_{\Omega}Y - P_{\Omega}X + Y - Y$, in the iteration path, we define $Y^{old}$ as the last step estimate, and $Y^{new}$ as the estimate in the current step. Then we can reconsider the optimization problem as
+$$
+min_{Y\in R^{m\times n}} ||P_{\Omega}Y^{old} - P_{\Omega}X + Y^{old} - Y^{new}||_F^2 + \lambda||Y^{new}||_{S_1}
+$$
+which is similar to the original optimization problem we described in the class.
+
+So we can generate the algorithm as following soft-impute algorithm:
+
+###soft-impute algorithm
+* Initialize $Y^{old}=0$.
+
+* Do for $\lambda_1 > \lambda_2 > \dots \lambda_K$;
+
+    (a) Repeat:
+        i. Compute $Y^{new} \leftarrow \mathbf{S}_{\lambda_k}(P_{\Omega}(X)+ P_{\Omega}^{\perp}(Y^{old})).$
+        ii. If 
+        $$\frac{||Y^{new} - Y^{old}||_F^2}{||Y^{old}||_F^2} < \epsilon $$ 
+            exit.
+        iii. Assign $Y^{old} \leftarrow Y^{new}$.
+    (b) Assign $\hat{Y}_{\lambda_k} \leftarrow Y^{new}$.
+* Output the sequence of solutions $\hat{Y}_{\lambda_1},\dots,\hat{Y}_{\lambda_K}$
+
+
+## Data analysis
+First, we pick a grayscale picture from Google website. Here I select the classical picture
+
+```{r lenna}
+setwd("/users/ryan/Desktop/test")
+library(jpeg)
+img = readJPEG("./lenna.jpg")  ##input a grayscale image as a matrix
+par(mar = c(0,0,0,0),omi = c(0,0,1,2))
+plot(0,0,type = "n")
+rasterImage(img, -1, -1, 1, 1)
+```
+
+Second, we randomly change $40\%$ points of this matrix into missing form NA. It can be showed as follows.
+
+```{r missing}
+num_rdn = 0.4*ncol(img)*nrow(img)  ##number of random missing
+
+set.seed(2016000100) #random seed
+x_rdn = sample.int(n=nrow(img), size=num_rdn,replace = TRUE)
+y_rdn = sample.int(n=ncol(img), size=num_rdn,replace = TRUE)
+
+img_rdn = img
+for(i in 1:num_rdn){
+  img_rdn[x_rdn[i],y_rdn[i]] = NA
+}     ##randomly miss
+par(mar = c(0,0,0,0),omi = c(0,0,1,2))
+plot(0,0,type="n")
+rasterImage(img_rdn,-1,-1,1,1)
+```
+
+Now we want to recover this picture by solving the optimization problem using the soft-impute algorithm.
+
+```{r recover}
+P_Omega = matrix(0,nrow(img_rdn),ncol(img_rdn))
+for(i in 1:nrow(img_rdn)){
+  for(j in 1:ncol(img_rdn)){
+    if(!is.na(img_rdn[i,j])) P_Omega[i,j] = 1
+  }
+}     ##indicator matrix of missing coordinate
+
+library(softimpute)
+
+zz = softimpute(img_rdn, P_Omega, lambda=0.5)  ##lambda is the tuning parameter for penalty
+
+zz$num_iteration   ##number of iteration
+
+par(mar = c(0,0,0,0),omi = c(0,0,1,2))
+plot(0,0, type="n")
+rasterImage(zz$Z, -1,-1,1,1)
+
+```
+
+##Conclusion
+We can find that the soft-impute algorithm is a good way to recover the graph as vividly showed above.
+
+However, the soft-impute algorithm is definitely the only way to do this job. Some of my classmates use singular value thresholding(SVT) algorithm and they can derive effective results.
+
+In conclusion, the boundary of matrix completion is far from what we expected, if time permitted, we can do more.
